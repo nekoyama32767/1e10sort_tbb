@@ -11,11 +11,11 @@ Library: Intel TBB
 ## Compile command
 Linux
 ```
-g++ -O2 sort_tbb.cpp -otbb_sort -std=c++26 -lstdc++exp -pthread -DPARALLEL -ltbb
+g++ -O2 sort_tbb.cpp -otbb_sort -std=c++23 -lstdc++exp -pthread -DPARALLEL -ltbb
 ```
 Windows Msys2 system
 ```
-g++ -O2 sort_tbb.cpp -otbb_sort -std=c++26 -lstdc++exp -pthread -DPARALLEL -ltbb12
+g++ -O2 sort_tbb.cpp -otbb_sort -std=c++23 -lstdc++exp -pthread -DPARALLEL -ltbb12
 ```
 
 ## Result and example
