@@ -1,8 +1,13 @@
 # Parallel sort for reading int32 from file
 ## usage
+
 ```
 ./tbb_sort file_name
 ```
+
+!! Don't support CRLF file
+
+
 ## How to compile
 ### Enviroment
 Compiler support C++23 (Recommend gcc-14)
