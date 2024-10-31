@@ -14,7 +14,7 @@ Compiler support C++23 (Recommend gcc-14)
 
 Library: Intel TBB or Boost
 
-AVX2 support
+AVX2 support (option)
 
 ## Compile command
 ### Use TBB
