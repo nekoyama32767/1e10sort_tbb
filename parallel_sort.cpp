@@ -14,8 +14,12 @@
 #ifdef PARALLEL
 #include <execution>
 #endif
-
-
+#ifdef BOOST_SORT
+#include <boost/sort/block_indirect_sort/block_indirect_sort.hpp>
+#endif
+#ifdef AVX_SSE
+#include <immintrin.h>
+#endif
 constexpr auto TIME = 100000000;
 int32_t thread_num = std::thread::hardware_concurrency();
 
@@ -57,7 +61,46 @@ auto check_separator_print(std::string_view file_sv, size_t begin, size_t end)
         std::println("{}", st);
     }
 }
+#ifdef AVX_SSE
+inline uint32_t strToUintSSE(char* sta) {
+    //Set up constants
+    __m128i zero        = _mm_setzero_si128();
+    __m128i multiplier1 = _mm_set_epi16(1000,100,10,1,1000,100,10,1);
+    __m128i multiplier2 = _mm_set_epi32(0, 100000000, 10000, 1);
 
+    //Compute length of string
+    __m128i string      = _mm_lddqu_si128((__m128i*)sta);
+
+    __m128i digitRange  = _mm_setr_epi8('0','9',0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+    int len = _mm_cmpistri(digitRange, string, _SIDD_UBYTE_OPS | _SIDD_CMP_RANGES | _SIDD_NEGATIVE_POLARITY);
+
+
+    sta += len + 1;
+
+    //Reverse order of number
+    __m128i permutationMask = _mm_set1_epi8(len);
+    permutationMask = _mm_add_epi8(permutationMask, _mm_set_epi8(-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1));
+    string = _mm_shuffle_epi8(string, permutationMask);
+
+    //Shift string down
+    __m128i zeroChar = _mm_set1_epi8('0');
+    string = _mm_subs_epu8(string, zeroChar);
+
+    //Multiply with right power of 10 and add up
+    __m128i stringLo = _mm_unpacklo_epi8(string, zero);
+    __m128i stringHi = _mm_unpackhi_epi8(string, zero);
+    stringLo = _mm_madd_epi16(stringLo, multiplier1);
+    stringHi = _mm_madd_epi16(stringHi, multiplier1);
+    __m128i intermediate = _mm_hadd_epi32(stringLo, stringHi);
+    intermediate = _mm_mullo_epi32(intermediate, multiplier2);
+
+    //Hadd the rest up
+    intermediate = _mm_add_epi32(intermediate, _mm_shuffle_epi32(intermediate, 0b11101110));
+    intermediate = _mm_add_epi32(intermediate, _mm_shuffle_epi32(intermediate, 0b01010101));
+
+    return _mm_cvtsi128_si32(intermediate);
+}
+#endif
 auto range_conv(std::string_view file_sv, size_t begin, size_t end, std::vector<int32_t> &dest)
 {
     dest.reserve((TIME/ thread_num) * 3 / 2);
@@ -67,11 +110,17 @@ auto range_conv(std::string_view file_sv, size_t begin, size_t end, std::vector<
     {
         std::array<char, 16> buf;
         fin.getline(&buf[0], 16);
-        int32_t val;
+        //auto val = 0;
+        //std::println("{} {}", val, buf.data());
+        #ifdef AVX_SSE
+        dest.push_back(static_cast<int32_t>(strToUintSSE(buf.data())));
+        #else
+        int32_t val = 0;
         if (auto [ptr, ec] = std::from_chars(buf.begin(), buf.end(), val); ec == std::errc{}) 
         {
             dest.push_back(val);
         }
+        #endif
     }
 }
 
@@ -106,8 +155,11 @@ auto file2vec_sort_multi(std::string_view file_sv, std::vector<int32_t> &dest)
             dest.push_back(v);
         }
     }
+
 #ifdef PARALLEL
     std::sort(std::execution::par, dest.begin(), dest.end());
+#elif defined(BOOST_SORT)
+    boost::sort::block_indirect_sort(dest.begin(), dest.end());
 #else
     std::ranges::sort(dest);
 #endif
