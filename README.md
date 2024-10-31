@@ -21,7 +21,7 @@ g++ -O2 sort_tbb.cpp -otbb_sort -std=c++23 -lstdc++exp -pthread -DPARALLEL -ltbb
 ## Result and example
 Windows Msys2 gcc14 on 14900HX(8P16E), 32thread
 ```
-time ./sort_tbb.exe random_10e9.txt
+time ./sort_tbb random_10e9.txt
 
 real    0m3.993s
 user    0m0.000s
