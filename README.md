@@ -36,6 +36,12 @@ Add ` -DAVX_SSE -mavx2` to compile options
 g++ -O2 -std=c++23 -lpthread parallel_sort.cpp -oboost_avx_sort -lstdc++exp -DBOOST_SORT -DAVX_SSE -mavx2
 ```
 
+### Use naive radix sort on per reading woker and naive merge
+
+```
+g++ parallel_sort_radix.cpp -oparallel_radix -O2 -std=c++23 -DAVX_SEE
+```
+
 ## Result and example
 Windows Msys2 gcc14 on 14900HX(8P16E), 32thread
 
@@ -52,6 +58,15 @@ AVX/SSE + Boost
 time ./boost_avx_sort random_10e9.txt 
 
 real    0m3.560s
+user    0m0.000s
+sys     0m0.015s
+```
+Naive Radix per-thread and merge
+
+```
+time ./parallel_radix random_10e9.txt 
+
+real    0m3.667s
 user    0m0.000s
 sys     0m0.015s
 ```
