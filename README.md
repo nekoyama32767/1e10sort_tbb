@@ -64,9 +64,9 @@ sys     0m0.015s
 Naive Radix per-thread and merge
 
 ```
-time ./parallel_radix random_10e9.txt 
+time ./parallel_radix random_1e9.txt
 
-real    0m3.667s
+real    0m4.069s
 user    0m0.000s
-sys     0m0.015s
+sys     0m0.000s
 ```

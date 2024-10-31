@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <span>
 #include <spanstream>
+
 #ifdef PARALLEL
 #include <execution>
 #endif
@@ -20,6 +21,11 @@
 #ifdef AVX_SSE
 #include <immintrin.h>
 #endif
+#ifdef PARALLEL_RADIX
+#include <parallel_radix_sort.h>
+#endif
+
+
 constexpr auto TIME = 100000000;
 int32_t thread_num = std::thread::hardware_concurrency();
 
@@ -101,9 +107,58 @@ inline uint32_t strToUintSSE(char* sta) {
     return _mm_cvtsi128_si32(intermediate);
 }
 #endif
+
+#ifdef USE_RADIX_PRE
+
+#ifndef radix_sort_cpp
+#define radix_sort_cpp
+
+#include <iterator>
+#include <vector>
+
+template <int UNIT, int BITS, class RAI>
+void radix_sort(RAI a0, RAI aN)
+{
+        typedef typename std::iterator_traits<RAI>::value_type val_t;
+        typedef typename std::iterator_traits<RAI>::difference_type dif_t;
+        static const int KEYS = 1 << UNIT;
+        static const int MASK = KEYS - 1;
+        const dif_t N = aN - a0;
+        const RAI& a = a0;
+
+        if (N < 2) return;
+        std::vector<dif_t> h(KEYS);
+        std::vector<val_t> b(N);
+        const typename std::vector<val_t>::iterator b0 = b.begin();
+        const typename std::vector<val_t>::iterator bN = b.end();
+        for (int shift = 0; shift < BITS; shift += UNIT) {
+                for (int k = 0; k < KEYS; k++) h[k] = 0;
+                typename std::vector<val_t>::iterator bi = b0;
+                bool done = true;
+                for (RAI ai = a0; ai < aN; ++ai, ++bi) {
+                        const val_t& x = *ai;
+                        const int32_t y = (x) >> shift;
+                        if (y > 0) done = false;
+                        ++h[int(y & MASK)];
+                        *bi = x;
+                }
+                if (done) return; 
+                for (int32_t k = 1; k < KEYS; k++) h[k] += h[k - 1];
+                for (bi = bN; bi > b0;) { 
+                        const val_t& x = *(--bi);
+                        const int32_t y = int32_t(((x) >> shift) & MASK);
+                        const dif_t j = --h[y];
+                        a[j] = x;
+                }
+        }
+}
+
+#endif // radix_sort_cpp
+#endif //USE_RADIX_PRE
+
 auto range_conv(std::string_view file_sv, size_t begin, size_t end, std::vector<int32_t> &dest)
 {
-    dest.reserve((TIME/ thread_num) * 3 / 2);
+    dest.reserve((TIME/ thread_num) / 4 * 5);
     std::ifstream fin(file_sv.data());
     fin.seekg(begin);
     while (fin.tellg() < end)
@@ -122,6 +177,9 @@ auto range_conv(std::string_view file_sv, size_t begin, size_t end, std::vector<
         }
         #endif
     }
+#ifdef USE_RADIX_PRE
+    radix_sort<8, 32>(dest.begin(), dest.end());
+#endif
 }
 
 auto workers_conv_file2vecs(std::string_view file_sv) -> std::vector<std::vector<int32_t>>
@@ -149,7 +207,6 @@ auto file2vec_sort_multi(std::string_view file_sv, std::vector<int32_t> &dest)
     int total = 0;
     for (auto &vec:conv_vecs)
     {
-        total += vec.size();
         for (auto v:vec)
         {
             dest.push_back(v);
@@ -160,6 +217,8 @@ auto file2vec_sort_multi(std::string_view file_sv, std::vector<int32_t> &dest)
     std::sort(std::execution::par, dest.begin(), dest.end());
 #elif defined(BOOST_SORT)
     boost::sort::block_indirect_sort(dest.begin(), dest.end());
+#elif defined(PARALLEL_RADIX)
+    parallel_radix_sort::SortKeys(dest.data(), dest.size());
 #else
     std::ranges::sort(dest);
 #endif

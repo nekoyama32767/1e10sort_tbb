@@ -295,10 +295,10 @@ auto vec2file_multi(std::vector<int32_t> &source, std::string_view file_sv)
         t.join();
     }
     std::ofstream fout("sort.txt", std::ios::binary);
-    // for (auto &buf:workers_out_put_buffers)
-    // {
-    //     fout << buf.data();
-    // }
+    for (auto &buf:workers_out_put_buffers)
+    {
+        fout << buf.data();
+    }
 }
 
 std::vector<int32_t> source;
