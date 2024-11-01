@@ -38,7 +38,7 @@ g++ -O2 -std=c++23 -lpthread parallel_sort.cpp -oboost_avx_sort -lstdc++exp -DBO
 ## Use async IO
 ! Depend boost library
 ```
-g++ parallel_sort_async_io.cpp -std=c++23 -O3 -oboost_sort_sync_io -DAVX_SSE -DBOOST_SORT -mavx2 -pthread
+g++ parallel_sort_async_io.cpp -std=c++23 -O3 -oboost_sort_async_io -DAVX_SSE -DBOOST_SORT -mavx2 -pthread
 ```
 
 ## Result and example
@@ -46,7 +46,7 @@ g++ parallel_sort_async_io.cpp -std=c++23 -O3 -oboost_sort_sync_io -DAVX_SSE -DB
 Linux on Xeon 12core 24Thread
 Async IO + Boost + AVX
 ```
-time ./boost_sort_sync_iot random_10e9.txt 
+time ./boost_sort_async_io random_10e9.txt 
 
 real    0m2.899s
 user    0m36.389s
