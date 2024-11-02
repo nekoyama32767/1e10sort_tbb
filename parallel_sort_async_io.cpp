@@ -242,7 +242,7 @@ auto conv_consumer(std::vector<int32_t> &dest)
                 dest.push_back(static_cast<int32_t>(strToUintSSE(buf_con.data())));
                 #else
                 int32_t val = 0;
-                if (auto [ptr, ec] = std::from_chars(buf_con.begin(), buf_con.end(), val); ec == std::errc{}) 
+                if (auto [ptr, ec] = std::from_chars(buf_con.data(), buf_con.data() + sv.size(), val); ec == std::errc{}) 
                 {
                     dest.push_back(val);
                 }
