@@ -155,19 +155,19 @@ void radix_sort(RAI a0, RAI aN)
 
 #endif // radix_sort_cpp
 #endif //USE_RADIX_PRE
-int32_t io_threads{8};
 
-
-constexpr auto BUFFER_BLOCK_NUM = 256;
-constexpr auto BUFFER_BLOCK_SIZE = static_cast<size_t>(TIME / 24) / 32ull * 5ull * 11ull;
-//constexpr auto 
 struct buffer_block{
     std::vector<char> data_vec;
     size_t size;
 };
+
+int32_t io_threads{8};
+int32_t BUFFER_BLOCK_NUM = 256;
+int32_t BUFFER_BLOCK_SIZE = static_cast<size_t>(TIME / 24) / 32ull * 5ull * 11ull;
 std::vector<buffer_block> buffer_blocks(BUFFER_BLOCK_NUM);
 boost::lockfree::queue<int32_t> conv_task_que(BUFFER_BLOCK_NUM);
 boost::lockfree::queue<int32_t> conv_task_reuse_que(BUFFER_BLOCK_NUM);
+//constexpr auto 
 
 auto file2vec_block_init()
 {
@@ -214,9 +214,10 @@ auto file2vec_block_read_worker(std::string_view file_sv, size_t begin, size_t e
     }
 }
 std::atomic_bool consumer_stop_flag{false};
-auto conv_consumer(std::vector<int32_t> &dest)
+auto conv_consumer() -> std::vector<int32_t>
 {
-    dest.reserve((TIME/ thread_num) / 4 * 5);
+    std::vector<int32_t> ret;
+    ret.reserve((TIME/ thread_num) / 4 * 5);
     for (;;)
     {
         if (consumer_stop_flag.load())
@@ -239,12 +240,12 @@ auto conv_consumer(std::vector<int32_t> &dest)
                 std::copy(sv.begin(), sv.end(), std::back_inserter(buf_con));
                 buf_con.push_back(0);
                 #ifdef AVX_SSE
-                dest.push_back(static_cast<int32_t>(strToUintSSE(buf_con.data())));
+                ret.push_back(static_cast<int32_t>(strToUintSSE(buf_con.data())));
                 #else
                 int32_t val = 0;
                 if (auto [ptr, ec] = std::from_chars(buf_con.data(), buf_con.data() + sv.size(), val); ec == std::errc{}) 
                 {
-                    dest.push_back(val);
+                    ret.push_back(val);
                 }
                 #endif
                 //std::println("{} pair\n", buf_con.data());
@@ -255,13 +256,14 @@ auto conv_consumer(std::vector<int32_t> &dest)
             while(!conv_task_reuse_que.push(buf_id));
         }
     }
+    return ret;
 }
 
-auto file2vec_block(std::string_view file_sv) -> std::vector<std::vector<int32_t>>
+auto file2vec_block(std::string_view file_sv) -> std::vector<std::future<std::vector<int32_t>>>
 {
-    std::vector<std::vector<int32_t>> workers_conv_vecs(thread_num);
+    std::vector<std::future<std::vector<int32_t>>> workers_conv_vecs;
     std::vector<std::thread> threads;
-    std::vector<std::thread> threads_dummy;
+    //std::vector<std::thread> threads_dummy;
     file2vec_block_init();
     auto separator_pos = file_separator_pos(file_sv, io_threads);
    for (auto [idx, sp]: separator_pos | std::views::slide(2) | std::views::enumerate)
@@ -271,7 +273,8 @@ auto file2vec_block(std::string_view file_sv) -> std::vector<std::vector<int32_t
 
     for (auto i:std::views::iota(0, thread_num))
     {
-        threads_dummy.emplace_back(std::thread{conv_consumer, std::ref(workers_conv_vecs[i])});
+        //threads_dummy.emplace_back(std::thread{conv_consumer, std::ref(workers_conv_vecs[i])});
+        workers_conv_vecs.emplace_back(std::async(std::launch::async, (conv_consumer)));
     }
 
     for(auto &t:threads)
@@ -280,10 +283,10 @@ auto file2vec_block(std::string_view file_sv) -> std::vector<std::vector<int32_t
     }
     while (!conv_task_que.empty()) {std::this_thread::yield();};
     consumer_stop_flag = true;
-    for(auto &t:threads_dummy)
-    {
-        t.join();
-    }
+    // for(auto &t:threads_dummy)
+    // {
+    //     t.join();
+    // }
     //file2vec_block_read_worker(file_sv, 0, separator_pos.back());
     return workers_conv_vecs;
 }
@@ -333,20 +336,42 @@ auto workers_conv_file2vecs(std::string_view file_sv) -> std::vector<std::vector
 
 auto file2vec_sort_multi(std::string_view file_sv, std::vector<int32_t> &dest)
 {
-    //std::vector<std::thread> threads;
+    std::vector<std::thread> threads;
     //auto conv_vecs = workers_conv_file2vecs(file_sv);
     auto conv_vecs = file2vec_block(file_sv);
-    dest.reserve(TIME);
+    dest.clear();
+    dest.resize(TIME);
+    size_t len = 0;
     int i = 0;
     int total = 0;
-    for (auto &vec:conv_vecs)
+    std::vector<bool> con_checked(thread_num);
+    std::vector<std::vector<int32_t>> workers_conv_vecs_recv(thread_num);
+    for (int i{}; i < thread_num;)
     {
-        for (auto v:vec)
+        for (auto tid:std::views::iota(0, thread_num))
         {
-            dest.push_back(v);
+            if (con_checked[tid]) continue;
+            std::future_status status;
+            status = conv_vecs[tid].wait_for(std::chrono::milliseconds(10));
+            if (status == std::future_status::ready)
+            {
+                con_checked[tid] = true;
+                ++i;
+                workers_conv_vecs_recv[tid] = conv_vecs[tid].get();
+                auto& vec = workers_conv_vecs_recv[tid];
+                if (vec.size() > 0)
+                {
+                    auto beg = len;
+                    len += vec.size();
+                    threads.emplace_back(std::thread{[](auto tid, auto beg, auto end, auto dest){
+                        std::copy(beg, end, dest);
+                    }, tid, vec.begin(), vec.end() , dest.begin() + beg});
+                }
+            }
         }
     }
-
+    std::ranges::for_each(threads, [](auto &t){t.join();});
+    dest.resize(len);
 #ifdef PARALLEL
     std::sort(std::execution::par_unseq, dest.begin(), dest.end());
     //tbb::parallel_sort(dest.begin(), dest.end());
@@ -400,12 +425,19 @@ auto vec2file_multi(std::vector<int32_t> &source, std::string_view file_sv)
 std::vector<int32_t> source;
 int main(int argc, char* argv[])
 {
-    if (argc != 2)
+    if (argc < 2)
     {
-        std::println("Wrong argument, only accept one file path");
+        std::println("Wrong argument useage  filename  io_thread_num(optional) ");
         return 0;
     }
-    std::string file_name;
+    else
+    {
+        if (argc >= 3)
+        {
+            io_threads = std::stoi(std::string(argv[2]));
+        }
+    }
+
     //file2vec_block(argv[1]);
     file2vec_sort_multi(argv[1], source);
     vec2file_multi(source, "sort.txt");

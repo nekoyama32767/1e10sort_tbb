@@ -4,7 +4,10 @@
 ```
 ./parallel_sort file_name
 ```
-
+Configure IO thread number as 4
+```
+./parallel_sort file_name 4
+```
 !! Don't support CRLF file
 
 
@@ -48,9 +51,9 @@ Async IO + Boost + AVX
 ```
 time ./boost_sort_async_io random_10e9.txt 
 
-real    0m2.899s
-user    0m36.389s
-sys     0m3.405s
+real    0m2.121s
+user    0m21.948s
+sys     0m2.572s
 ```
 
 Windows Msys2 gcc14 on 14900HX(8P16E), 32thread
