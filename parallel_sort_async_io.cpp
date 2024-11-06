@@ -171,11 +171,15 @@ boost::lockfree::queue<int32_t> conv_task_reuse_que(BUFFER_BLOCK_NUM);
 
 auto file2vec_block_init()
 {
+    std::vector<std::thread> threads;
     for (auto i:std::views::iota(0, BUFFER_BLOCK_NUM))
     {
+        threads.emplace_back(std::thread{[&](auto i){
         buffer_blocks[i].data_vec.resize(BUFFER_BLOCK_SIZE + 10, 0);
         while(!conv_task_reuse_que.push(i));
+        }, i});
     }
+    std::ranges::for_each(threads, [](auto &t){ t.join();});
 }
 
 auto file2vec_block_read_worker(std::string_view file_sv, size_t begin, size_t end)
@@ -441,5 +445,21 @@ int main(int argc, char* argv[])
     //file2vec_block(argv[1]);
     file2vec_sort_multi(argv[1], source);
     vec2file_multi(source, "sort.txt");
+    std::vector<std::thread> threads;
+    threads.emplace_back(std::thread{[&](){
+        //source.~vector();
+        //while(!conv_task_reuse_que.push(i));
+        source = std::vector{0};
+        }});
+
+    for (auto i:std::views::iota(0, BUFFER_BLOCK_NUM))
+    {
+        threads.emplace_back(std::thread{[&](auto i){
+        buffer_blocks[i].data_vec = {};
+        //while(!conv_task_reuse_que.push(i));
+        }, i});
+    }
+    std::ranges::for_each(threads, [](auto &t){ t.join();});
+
     return 0;
 }
